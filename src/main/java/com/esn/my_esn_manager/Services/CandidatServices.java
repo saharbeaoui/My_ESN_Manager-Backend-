@@ -1,16 +1,16 @@
 package com.esn.my_esn_manager.Services;
 
-import com.esn.my_esn_manager.Entities.Candidat;
-import com.esn.my_esn_manager.Entities.Roles;
-import com.esn.my_esn_manager.Entities.Users;
+import com.esn.my_esn_manager.Entities.*;
 import com.esn.my_esn_manager.IServices.ICandidatService;
 import com.esn.my_esn_manager.Repositories.CandidatRepository;
+import com.esn.my_esn_manager.Repositories.PipelineCandidatRepository;
 import com.esn.my_esn_manager.Repositories.UserRepository;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 
+import java.util.ArrayList;
 import java.util.List;
 
 @Service
@@ -19,35 +19,124 @@ public class CandidatServices implements ICandidatService {
     private final CandidatRepository candidatRepository;
 
     private final UserRepository userRepository;
-
+    private final PipelineCandidatRepository pipelineCandidatRepository;
     public CandidatServices(CandidatRepository candidatRepository,
-                            UserRepository userRepository) {
+                            UserRepository userRepository,
+                            PipelineCandidatRepository pipelineCandidatRepository) {
         this.candidatRepository = candidatRepository;
         this.userRepository = userRepository;
+        this.pipelineCandidatRepository = pipelineCandidatRepository;
+
     }
 
     @Override
     @PreAuthorize("hasAnyRole('MANAGER', 'RH')")
     public Candidat creer(Candidat candidat) {
 
+        // 1. Récupérer l'utilisateur connecté grâce au JWT
         Authentication authentication =
                 SecurityContextHolder.getContext().getAuthentication();
 
         String email = authentication.getName();
 
-        Users responsableRH =
-                userRepository.findByEmail(email)
+        // 2. Récupérer le RH responsable
+        Users responsableRH = userRepository.findByEmail(email)
+                .orElseThrow(() ->
+                        new RuntimeException(
+                                "Utilisateur connecté introuvable"
+                        )
+                );
+
+        // 3. Affecter le RH au candidat
+        candidat.setResponsableRH(responsableRH);
+
+        Users referentTechnique =
+                userRepository.findByRole(Roles.REFERENT_TECHNIQUE)
                         .orElseThrow(() ->
                                 new RuntimeException(
-                                        "Utilisateur connecté introuvable"
+                                        "Référent technique introuvable"
                                 )
                         );
 
-        candidat.setResponsableRH(responsableRH);
+        Users manager =
+                userRepository.findByRole(Roles.MANAGER)
+                        .orElseThrow(() ->
+                                new RuntimeException(
+                                        "Manager introuvable"
+                                )
+                        );
 
-        return candidatRepository.save(candidat);
+        // 4. Sauvegarder le candidat
+        Candidat candidatSaved =
+                candidatRepository.save(candidat);
+
+        // 5. Créer automatiquement la pipeline
+        PipelineCandidat pipeline =
+                new PipelineCandidat();
+
+        pipeline.setCandidat(candidatSaved);
+        List<EtapePipeline> etapes = new ArrayList<>();
+
+        etapes.add(
+                creerEtape(
+                        TypeEtape.APPEL_ABOUTI,
+                        pipeline,
+                        responsableRH
+                )
+        );
+
+        etapes.add(
+                creerEtape(
+                        TypeEtape.ENTRETIEN_RH,
+                        pipeline,
+                        responsableRH
+                )
+        );
+
+        etapes.add(
+                creerEtape(
+                        TypeEtape.ENTRETIEN_TECHNIQUE,
+                        pipeline,
+                        referentTechnique
+                )
+        );
+
+        etapes.add(
+                creerEtape(
+                        TypeEtape.ENTRETIEN_FINAL,
+                        pipeline,
+                        manager
+                )
+        );
+
+
+        // 7. Ajouter les étapes à la pipeline
+        pipeline.setEtapes(etapes);
+
+        // 8. Sauvegarder la pipeline et ses étapes
+        pipelineCandidatRepository.save(pipeline);
+
+        // 9. Retourner le candidat créé
+        return candidatSaved;
     }
 
+    private EtapePipeline creerEtape(
+            TypeEtape typeEtape,
+            PipelineCandidat pipeline,
+            Users responsable) {
+
+        EtapePipeline etape = new EtapePipeline();
+
+        etape.setTypeEtape(typeEtape);
+
+        etape.setStatut(StatutPipeline.EN_ATTENTE);
+
+        etape.setResponsable(responsable);
+
+        etape.setPipeline(pipeline);
+
+        return etape;
+    }
 
     @Override
     @PreAuthorize("hasAnyRole('MANAGER', 'RH', 'REFERENT_TECHNIQUE', 'INGENIEUR_AFFAIRES')")
