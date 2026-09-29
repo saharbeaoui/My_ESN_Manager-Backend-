@@ -1,7 +1,10 @@
 package com.esn.my_esn_manager.Entities;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import lombok.*;
+
+import java.util.List;
 
 @Entity
 @Table(name = "utilisateurs")
@@ -33,4 +36,9 @@ public class Users {
 
     @Column(nullable = false)
     private boolean actif = true;
+
+
+    @JsonIgnore
+    @OneToMany(mappedBy = "responsableRH")
+    private List<Candidat> candidats;
 }

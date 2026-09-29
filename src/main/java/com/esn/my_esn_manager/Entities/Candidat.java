@@ -33,6 +33,9 @@ public class Candidat {
     private String lieuMobilite;
 
     private Integer nombreAnneesExperience;
+    @ManyToOne
+    @JoinColumn(name = "responsable_rh_id", nullable = false)
+    private Users responsableRH;
 
     @OneToMany(
             mappedBy = "candidat",

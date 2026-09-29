@@ -1,9 +1,14 @@
 package com.esn.my_esn_manager.Services;
 
 import com.esn.my_esn_manager.Entities.Candidat;
+import com.esn.my_esn_manager.Entities.Roles;
+import com.esn.my_esn_manager.Entities.Users;
 import com.esn.my_esn_manager.IServices.ICandidatService;
 import com.esn.my_esn_manager.Repositories.CandidatRepository;
+import com.esn.my_esn_manager.Repositories.UserRepository;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
@@ -13,15 +18,36 @@ public class CandidatServices implements ICandidatService {
 
     private final CandidatRepository candidatRepository;
 
-    public CandidatServices(CandidatRepository candidatRepository) {
+    private final UserRepository userRepository;
+
+    public CandidatServices(CandidatRepository candidatRepository,
+                            UserRepository userRepository) {
         this.candidatRepository = candidatRepository;
+        this.userRepository = userRepository;
     }
 
     @Override
     @PreAuthorize("hasAnyRole('MANAGER', 'RH')")
     public Candidat creer(Candidat candidat) {
+
+        Authentication authentication =
+                SecurityContextHolder.getContext().getAuthentication();
+
+        String email = authentication.getName();
+
+        Users responsableRH =
+                userRepository.findByEmail(email)
+                        .orElseThrow(() ->
+                                new RuntimeException(
+                                        "Utilisateur connecté introuvable"
+                                )
+                        );
+
+        candidat.setResponsableRH(responsableRH);
+
         return candidatRepository.save(candidat);
     }
+
 
     @Override
     @PreAuthorize("hasAnyRole('MANAGER', 'RH', 'REFERENT_TECHNIQUE', 'INGENIEUR_AFFAIRES')")
@@ -70,5 +96,39 @@ public class CandidatServices implements ICandidatService {
         }
 
         candidatRepository.deleteById(id);
+    }
+
+    @Override
+    public List<Candidat> findMesCandidats() {
+        Authentication authentication =
+                SecurityContextHolder.getContext().getAuthentication();
+
+        String email = authentication.getName();
+
+        Users rh =
+                userRepository.findByEmail(email)
+                        .orElseThrow(() ->
+                                new RuntimeException(
+                                        "Utilisateur connecté introuvable"
+                                )
+                        );
+
+        return candidatRepository.findByResponsableRH(rh);
+    }
+
+    @Override
+    public List<Candidat> findCandidatsParRH(Long rhId) {
+        Users rh = userRepository.findById(rhId)
+                .orElseThrow(() ->
+                        new RuntimeException("RH introuvable avec l'id : " + rhId)
+                );
+
+        if (rh.getRole() != Roles.RH) {
+            throw new RuntimeException(
+                    "L'utilisateur sélectionné n'est pas un RH"
+            );
+        }
+
+        return candidatRepository.findByResponsableRH(rh);
     }
 }

@@ -16,4 +16,8 @@ public interface ICandidatService {
 
     Candidat modifier(Long id, Candidat candidat);
 
-    void supprimer(Long id);}
+    void supprimer(Long id);
+    List<Candidat> findMesCandidats();
+    List<Candidat> findCandidatsParRH(Long rhId);
+
+}

@@ -60,4 +60,17 @@ public class CandidatController {
 
         return ResponseEntity.noContent().build();
     }
+
+    @GetMapping("/mes-candidats")
+    @PreAuthorize("hasAnyRole('MANAGER', 'RH')")
+    public List<Candidat> findMesCandidats() {
+        return candidatService.findMesCandidats();
+    }
+    @GetMapping("/par-rh/{rhId}")
+    @PreAuthorize("hasRole('MANAGER')")
+    public List<Candidat> findCandidatsParRH(
+            @PathVariable Long rhId) {
+
+        return candidatService.findCandidatsParRH(rhId);
+    }
 }
