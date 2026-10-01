@@ -43,4 +43,8 @@ public class Candidat {
             orphanRemoval = true
     )
     private List<Diplome> diplomes;
+    @OneToOne(mappedBy = "candidat",
+            cascade = CascadeType.ALL,
+            orphanRemoval = true)
+    private CV cv;
 }

@@ -1,6 +1,7 @@
 package com.esn.my_esn_manager.Services;
 
 import com.esn.my_esn_manager.Entities.*;
+import com.esn.my_esn_manager.IServices.ICVService;
 import com.esn.my_esn_manager.IServices.ICandidatService;
 import com.esn.my_esn_manager.Repositories.CandidatRepository;
 import com.esn.my_esn_manager.Repositories.PipelineCandidatRepository;
@@ -9,6 +10,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -20,62 +22,79 @@ public class CandidatServices implements ICandidatService {
 
     private final UserRepository userRepository;
     private final PipelineCandidatRepository pipelineCandidatRepository;
+    private final ICVService cvService;
     public CandidatServices(CandidatRepository candidatRepository,
                             UserRepository userRepository,
-                            PipelineCandidatRepository pipelineCandidatRepository) {
+                            PipelineCandidatRepository pipelineCandidatRepository,
+                            ICVService cvService) {
         this.candidatRepository = candidatRepository;
         this.userRepository = userRepository;
         this.pipelineCandidatRepository = pipelineCandidatRepository;
+        this.cvService = cvService;
 
     }
 
-    @Override
     @PreAuthorize("hasAnyRole('MANAGER', 'RH')")
-    public Candidat creer(Candidat candidat) {
+    public Candidat creer(
+            Candidat candidat , MultipartFile cv) {
 
-        // 1. Récupérer l'utilisateur connecté grâce au JWT
         Authentication authentication =
-                SecurityContextHolder.getContext().getAuthentication();
+                SecurityContextHolder
+                        .getContext()
+                        .getAuthentication();
 
         String email = authentication.getName();
 
-        // 2. Récupérer le RH responsable
-        Users responsableRH = userRepository.findByEmail(email)
-                .orElseThrow(() ->
+        // RH connecté
+        Users responsableRH =
+                userRepository.findByEmail(email)
+                        .orElseThrow(() ->
+                                new RuntimeException(
+                                        "Utilisateur connecté introuvable"
+                                )
+                        );
+
+        // Référent technique
+        Users referentTechnique =
+                userRepository.findByRole(
+                        Roles.REFERENT_TECHNIQUE
+                ).orElseThrow(() ->
                         new RuntimeException(
-                                "Utilisateur connecté introuvable"
+                                "Référent technique introuvable"
                         )
                 );
 
-        // 3. Affecter le RH au candidat
+        // Manager
+        Users manager =
+                userRepository.findByRole(
+                        Roles.MANAGER
+                ).orElseThrow(() ->
+                        new RuntimeException(
+                                "Manager introuvable"
+                        )
+                );
+
+        // Affecter le RH
         candidat.setResponsableRH(responsableRH);
 
-        Users referentTechnique =
-                userRepository.findByRole(Roles.REFERENT_TECHNIQUE)
-                        .orElseThrow(() ->
-                                new RuntimeException(
-                                        "Référent technique introuvable"
-                                )
-                        );
-
-        Users manager =
-                userRepository.findByRole(Roles.MANAGER)
-                        .orElseThrow(() ->
-                                new RuntimeException(
-                                        "Manager introuvable"
-                                )
-                        );
-
-        // 4. Sauvegarder le candidat
+        // Sauvegarder le candidat
         Candidat candidatSaved =
                 candidatRepository.save(candidat);
 
-        // 5. Créer automatiquement la pipeline
+        // Enregistrer le CV
+        cvService.enregistrerCV(
+                cv,
+                candidatSaved.getId()
+        );
+
+        // Créer la pipeline
         PipelineCandidat pipeline =
                 new PipelineCandidat();
 
         pipeline.setCandidat(candidatSaved);
-        List<EtapePipeline> etapes = new ArrayList<>();
+
+        List<EtapePipeline> etapes =
+                new ArrayList<>();
 
         etapes.add(
                 creerEtape(
@@ -109,17 +128,12 @@ public class CandidatServices implements ICandidatService {
                 )
         );
 
-
-        // 7. Ajouter les étapes à la pipeline
         pipeline.setEtapes(etapes);
 
-        // 8. Sauvegarder la pipeline et ses étapes
         pipelineCandidatRepository.save(pipeline);
 
-        // 9. Retourner le candidat créé
         return candidatSaved;
     }
-
     private EtapePipeline creerEtape(
             TypeEtape typeEtape,
             PipelineCandidat pipeline,
